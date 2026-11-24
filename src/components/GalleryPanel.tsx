@@ -1,4 +1,4 @@
-import {deleteDoc, doc, serverTimestamp, setDoc} from 'firebase/firestore';
+import {deleteDoc, doc, serverTimestamp, writeBatch} from 'firebase/firestore';
 import {ChevronLeft, ChevronRight, Images, LogIn, LogOut, Trash2, X} from 'lucide-react';
 import {type FormEvent, useEffect, useMemo, useState} from 'react';
 import {db, handleFirestoreError, OperationType} from '../firebase';
@@ -195,43 +195,57 @@ export function GalleryPanel({items, loading, loadError, adminAuth}: GalleryPane
     if (!currentUser || !isAdmin) return;
 
     const trimmedTitle = title.trim();
-    const trimmedUrl = linkUrl.trim();
+    const rawLines = linkUrl
+      .split(/[\r\n]+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
 
     if (trimmedTitle.length < 2 || trimmedTitle.length > 80) {
       setFormError('Judul harus 2–80 karakter.');
       return;
     }
-    if (
-      trimmedUrl.length < 12 ||
-      trimmedUrl.length > 500 ||
-      !/^https:\/\/\S+$/i.test(trimmedUrl)
-    ) {
-      setFormError('Masukkan link yang valid (diawali https:// tanpa spasi).');
+    if (rawLines.length === 0 || rawLines.length > 25) {
+      setFormError('Masukkan 1 hingga 25 link yang valid.');
       return;
+    }
+    for (const url of rawLines) {
+      if (url.length < 12 || url.length > 500 || !/^https:\/\/\S+$/i.test(url)) {
+        setFormError('Setiap link harus valid (diawali https:// tanpa spasi).');
+        return;
+      }
     }
 
     setFormError(null);
     setSubmitting(true);
 
-    const docId = buildPhotoDocId(trimmedTitle);
-    const nextOrder = items.reduce((max, item) => Math.max(max, item.order), -1) + 1;
+    const startOrder = items.reduce((max, item) => Math.max(max, item.order), -1) + 1;
+    const batch = writeBatch(db);
 
     try {
-      await setDoc(doc(db, 'gallery_links', docId), {
-        title: trimmedTitle,
-        driveUrl: trimmedUrl,
-        description: '',
-        order: Math.min(1000, nextOrder),
-        updatedBy: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      rawLines.forEach((url, index) => {
+        const entryTitle =
+          rawLines.length > 1
+            ? `${trimmedTitle} #${index + 1}`.slice(0, 80)
+            : trimmedTitle;
+        const docId = buildPhotoDocId(entryTitle);
+        batch.set(doc(db, 'gallery_links', docId), {
+          title: entryTitle,
+          driveUrl: url,
+          description: '',
+          order: Math.min(1000, startOrder + index),
+          updatedBy: currentUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       });
+
+      await batch.commit();
 
       setTitle('Kegiatan MI Nurul Islam');
       setLinkUrl('');
       setAdminView('none');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, `gallery_links/${docId}`);
+      handleFirestoreError(error, OperationType.WRITE, 'gallery_links');
     } finally {
       setSubmitting(false);
     }
@@ -300,15 +314,14 @@ export function GalleryPanel({items, loading, loadError, adminAuth}: GalleryPane
               aria-label="Judul foto atau album"
               className="w-full rounded-lg bg-white/95 text-[#1C1917] placeholder:text-stone-400 px-3 py-2 text-xs focus:outline-2 focus:outline-amber-300"
             />
-            <input
-              type="url"
+            <textarea
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="Tempel link foto atau folder Google Drive (https://...)"
-              maxLength={500}
+              placeholder="Tempel link foto atau folder Google Drive (bisa banyak link, 1 per baris)"
+              rows={2}
               required
               aria-label="Link foto atau folder"
-              className="w-full rounded-lg bg-white/95 text-[#1C1917] placeholder:text-stone-400 px-3 py-2 text-xs focus:outline-2 focus:outline-amber-300"
+              className="w-full rounded-lg bg-white/95 text-[#1C1917] placeholder:text-stone-400 px-3 py-2 text-xs focus:outline-2 focus:outline-amber-300 resize-none"
             />
             {formError && <p className="text-xs text-amber-200">{formError}</p>}
             <button
@@ -426,12 +439,12 @@ export function GalleryPanel({items, loading, loadError, adminAuth}: GalleryPane
             {folderEntries.map((folder) => (
               <div
                 key={folder.id}
-                className="overflow-hidden rounded-lg border border-white/15 bg-white"
+                className="relative w-full h-60 sm:h-72 overflow-hidden rounded-lg border border-white/15 bg-[#FBF9F5]"
               >
                 <iframe
                   title={folder.title}
                   src={`https://drive.google.com/embeddedfolderview?id=${folder.folderId}#grid`}
-                  className="w-full h-56 border-0"
+                  className="w-[250%] h-[250%] origin-top-left scale-[0.4] border-0"
                   loading="lazy"
                 />
               </div>
