@@ -1,0 +1,141 @@
+{
+  "entities": {
+    "OriginSchool": {
+      "title": "OriginSchool",
+      "description": "Rekapitulasi jumlah pendaftar SPMB berdasarkan asal TK atau RA (tanpa data pribadi siswa).",
+      "type": "object",
+      "properties": {
+        "schoolName": {
+          "type": "string",
+          "description": "Nama TK atau RA asal pendaftar.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "schoolType": {
+          "type": "string",
+          "enum": ["TK", "RA", "Lainnya"],
+          "description": "Kategori lembaga asal (TK, RA, atau Lainnya)."
+        },
+        "studentCount": {
+          "type": "integer",
+          "description": "Jumlah siswa pendaftar dari TK/RA tersebut (minimal 0)."
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "UID admin yang terakhir memperbarui data.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembuatan catatan (server timestamp)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembaruan terakhir (server timestamp)."
+        }
+      },
+      "required": ["schoolName", "schoolType", "studentCount", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "Registrant": {
+      "title": "Registrant",
+      "description": "Data pendaftar individu yang dicatat oleh panitia SPMB (khusus akses admin).",
+      "type": "object",
+      "properties": {
+        "studentName": {
+          "type": "string",
+          "description": "Nama lengkap calon siswa / pendaftar.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "schoolName": {
+          "type": "string",
+          "description": "Nama TK atau RA asal pendaftar.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "schoolType": {
+          "type": "string",
+          "enum": ["TK", "RA", "Lainnya"],
+          "description": "Kategori lembaga asal (TK, RA, atau Lainnya)."
+        },
+        "originSchoolId": {
+          "type": "string",
+          "description": "ID dokumen ringkasan asal TK/RA terkait.",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "studentCount": {
+          "type": "integer",
+          "description": "Jumlah pendaftar yang diwakili catatan ini (umumnya 1)."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "UID admin yang mencatat pendaftar.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pencatatan (server timestamp)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembaruan terakhir (server timestamp)."
+        }
+      },
+      "required": [
+        "studentName",
+        "schoolName",
+        "schoolType",
+        "originSchoolId",
+        "studentCount",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Dokumen penanda akun admin panitia SPMB yang berwenang.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin"]
+        }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/origin_schools/{schoolId}": {
+      "schema": {
+        "$ref": "#/entities/OriginSchool"
+      },
+      "description": "Daftar rekap jumlah siswa pendaftar per asal TK/RA. Dapat dibaca publik untuk informasi SPMB, hanya dapat diubah oleh admin terverifikasi."
+    },
+    "/registrants/{registrantId}": {
+      "schema": {
+        "$ref": "#/entities/Registrant"
+      },
+      "description": "Catatan nama pendaftar dan asal TK/RA yang hanya dapat dibaca serta dikelola oleh admin panitia SPMB."
+    },
+    "/admins/{userId}": {
+      "schema": {
+        "$ref": "#/entities/AdminUser"
+      },
+      "description": "Daftar UID admin panitia SPMB tambahan (read-only bagi pemilik UID)."
+    }
+  }
+}

@@ -1,0 +1,175 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedAdminEmail() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email == 'holipahhaenul@gmail.com';
+    }
+
+    function isAdmin() {
+      return isVerifiedAdminEmail() || (
+        isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidOriginSchool(data) {
+      return data.keys().hasAll([
+          'schoolName',
+          'schoolType',
+          'studentCount',
+          'updatedBy',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'schoolName',
+          'schoolType',
+          'studentCount',
+          'updatedBy',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.schoolName is string &&
+        data.schoolName.size() >= 2 &&
+        data.schoolName.size() <= 100 &&
+        data.schoolType in ['TK', 'RA', 'Lainnya'] &&
+        data.studentCount is int &&
+        data.studentCount >= 0 &&
+        data.studentCount <= 5000 &&
+        data.updatedBy is string &&
+        data.updatedBy == request.auth.uid &&
+        data.updatedBy.size() >= 1 &&
+        data.updatedBy.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRegistrant(data) {
+      return data.keys().hasAll([
+          'studentName',
+          'schoolName',
+          'schoolType',
+          'originSchoolId',
+          'studentCount',
+          'createdBy',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'studentName',
+          'schoolName',
+          'schoolType',
+          'originSchoolId',
+          'studentCount',
+          'createdBy',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.studentName is string &&
+        data.studentName.size() >= 2 &&
+        data.studentName.size() <= 100 &&
+        data.schoolName is string &&
+        data.schoolName.size() >= 2 &&
+        data.schoolName.size() <= 100 &&
+        data.schoolType in ['TK', 'RA', 'Lainnya'] &&
+        isValidId(data.originSchoolId) &&
+        data.studentCount is int &&
+        data.studentCount >= 1 &&
+        data.studentCount <= 5000 &&
+        data.createdBy is string &&
+        data.createdBy == request.auth.uid &&
+        data.createdBy.size() >= 1 &&
+        data.createdBy.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    match /origin_schools/{schoolId} {
+      allow get: if isValidId(schoolId);
+      allow list: if resource.data.studentCount >= 0;
+
+      allow create: if isAdmin() &&
+        isValidId(schoolId) &&
+        isValidOriginSchool(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(schoolId) &&
+        isValidOriginSchool(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'schoolName',
+          'schoolType',
+          'studentCount',
+          'updatedBy',
+          'updatedAt'
+        ]) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+
+      allow delete: if isAdmin() && isValidId(schoolId);
+    }
+
+    match /registrants/{registrantId} {
+      allow get: if isAdmin() && isValidId(registrantId);
+      allow list: if isVerifiedAdminEmail() && resource.data.studentCount >= 1;
+
+      allow create: if isAdmin() &&
+        isValidId(registrantId) &&
+        isValidRegistrant(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        existsAfter(/databases/$(database)/documents/origin_schools/$(incoming().originSchoolId));
+
+      allow update: if isAdmin() &&
+        isValidId(registrantId) &&
+        isValidRegistrant(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'studentName',
+          'schoolName',
+          'schoolType',
+          'originSchoolId',
+          'studentCount',
+          'updatedAt'
+        ]) &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+
+      allow delete: if isAdmin() && isValidId(registrantId);
+    }
+
+    match /admins/{userId} {
+      allow get: if isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        isValidId(userId) &&
+        request.auth.uid == userId;
+      allow list, create, update, delete: if false;
+    }
+  }
+}

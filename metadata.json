@@ -1,0 +1,6 @@
+{
+  "name": "Hitung Mundur SPMB MI Nurul Islam Gedangmas",
+  "description": "Penghitung waktu mundur resmi pembukaan Sistem Penerimaan Murid Baru (SPMB) MI Nurul Islam Gedangmas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
