@@ -5,9 +5,10 @@
 
 import {onAuthStateChanged, type User} from 'firebase/auth';
 import {collection, onSnapshot, orderBy, query, where} from 'firebase/firestore';
-import {ArrowDown, MessageCircle} from 'lucide-react';
+import {ArrowLeft, Images, MessageCircle, Users} from 'lucide-react';
 import {AnimatePresence, motion, MotionConfig} from 'motion/react';
 import {useEffect, useMemo, useState} from 'react';
+import {GalleryPanel, type GalleryLinkRecord} from './components/GalleryPanel';
 import {OriginInfoPanel, type OriginSchoolRecord, type SchoolType} from './components/OriginInfoPanel';
 import {auth, db, handleFirestoreError, OperationType} from './firebase';
 
@@ -16,7 +17,7 @@ const BANNER_IMAGE_SRC = `${import.meta.env.BASE_URL}assets/aistudio/Desain_tanp
 const ADMIN_WHATSAPP_URL =
   'https://wa.me/6285187232455?text=Assalamu%27alaikum%2C%20saya%20ingin%20bertanya%20mengenai%20pendaftaran%20SPMB%20MI%20Nurul%20Islam%20Gedangmas.';
 
-type ActiveMenu = 'countdown' | 'info';
+type ActiveMenu = 'countdown' | 'info' | 'gallery';
 
 interface TimeBreakdown {
   days: number;
@@ -96,37 +97,6 @@ function formatTargetWibCompact(date: Date): string {
   return `${datePart} · ${timePart} WIB`;
 }
 
-function FreeLogoEmblem() {
-  return (
-    <svg
-      width="40"
-      height="40"
-      viewBox="0 0 40 40"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      className="shrink-0"
-    >
-      <circle cx="20" cy="20" r="18.5" fill="#0B2B18" stroke="#F2C94C" strokeWidth="1.5" />
-      <path
-        d="M20 7.5L22.3 12.1L27.3 10.6L25.8 15.6L30.4 17.9L26.5 21.1L29 25.6L23.8 25.8L22.5 30.8L20 27.2L17.5 30.8L16.2 25.8L11 25.6L13.5 21.1L9.6 17.9L14.2 15.6L12.7 10.6L17.7 12.1L20 7.5Z"
-        stroke="#F2C94C"
-        strokeOpacity="0.45"
-        strokeWidth="1"
-      />
-      <path
-        d="M13 17.5C15.3 16.3 17.8 16.7 20 18.2C22.2 16.7 24.7 16.3 27 17.5V26.2C24.7 25 22.2 25.4 20 26.9C17.8 25.4 15.3 25 13 26.2V17.5Z"
-        fill="#FBF9F5"
-        stroke="#F2C94C"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-      <path d="M20 18.2V26.9" stroke="#114226" strokeWidth="1.2" strokeLinecap="round" />
-      <circle cx="20" cy="13" r="1.6" fill="#F2C94C" />
-    </svg>
-  );
-}
-
 export default function App() {
   const targetDate = useMemo(() => resolveTargetDate(), []);
   const targetMs = targetDate.getTime();
@@ -140,6 +110,8 @@ export default function App() {
   const [schools, setSchools] = useState<OriginSchoolRecord[]>([]);
   const [loadingSchools, setLoadingSchools] = useState<boolean>(true);
   const [schoolsError, setSchoolsError] = useState<string | null>(null);
+
+  const [galleryLinks, setGalleryLinks] = useState<GalleryLinkRecord[]>([]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -191,6 +163,36 @@ export default function App() {
     );
 
     return () => unsubscribeSnapshot();
+  }, []);
+
+  useEffect(() => {
+    const galleryQuery = query(
+      collection(db, 'gallery_links'),
+      where('order', '>=', 0),
+      orderBy('order', 'asc'),
+    );
+
+    const unsubscribeGallery = onSnapshot(
+      galleryQuery,
+      (snapshot) => {
+        const items: GalleryLinkRecord[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            title: typeof data.title === 'string' ? data.title : 'Galeri Kegiatan',
+            driveUrl: typeof data.driveUrl === 'string' ? data.driveUrl : '',
+            description: typeof data.description === 'string' ? data.description : '',
+            order: typeof data.order === 'number' ? data.order : 0,
+          };
+        });
+        setGalleryLinks(items);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'gallery_links');
+      },
+    );
+
+    return () => unsubscribeGallery();
   }, []);
 
   const totalStudents = useMemo(
@@ -265,43 +267,67 @@ export default function App() {
           />
 
           <div className="relative z-10 min-w-0">
-            {/* Ikon Logo di Tengah Tepat di Atas Tulisan SPMB (Klik untuk Info Pendaftar) */}
-            <MotionConfig reducedMotion="user">
-              <div className="mb-1.5 flex flex-col items-center">
-                {activeMenu === 'countdown' && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveMenu('info')}
-                    className="mb-0.5 inline-flex flex-col items-center gap-0.5 text-[11px] sm:text-xs font-medium text-amber-200/95 hover:text-white transition-colors cursor-pointer"
-                  >
-                    <span>Klik tombol untuk mengetahui Jumlah Pendaftar</span>
-                    <motion.span
-                      aria-hidden="true"
-                      animate={{y: [0, 3, 0]}}
-                      transition={{duration: 1.3, repeat: Infinity, ease: 'easeInOut'}}
-                      className="inline-flex text-[#F2C94C]"
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </motion.span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveMenu((prev) => (prev === 'countdown' ? 'info' : 'countdown'))
-                  }
-                  aria-expanded={activeMenu === 'info'}
-                  aria-label={
-                    activeMenu === 'info' ? 'Kembali ke Hitung Mundur' : 'Buka Info Pendaftar'
-                  }
-                  title={activeMenu === 'info' ? 'Kembali ke Hitung Mundur' : 'Buka Info Pendaftar'}
-                  className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-full p-1 transition-transform duration-200 ease-out hover:scale-105 active:scale-95 motion-reduce:transform-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 cursor-pointer"
+            {/* 2 Ikon Kecil di Atas Tulisan SPMB: Info jumlah Pendaftar & Galeri */}
+            <nav
+              aria-label="Menu informasi SPMB"
+              className="mb-2.5 flex items-start justify-center gap-6 sm:gap-10"
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveMenu((prev) => (prev === 'info' ? 'countdown' : 'info'))
+                }
+                aria-pressed={activeMenu === 'info'}
+                className="group inline-flex flex-col items-center gap-1 min-w-[44px] min-h-[44px] rounded-lg px-1 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+              >
+                <span
+                  className={`w-9 h-9 rounded-full inline-flex items-center justify-center border transition-all duration-200 ease-out group-hover:scale-105 group-active:scale-95 ${
+                    activeMenu === 'info'
+                      ? 'bg-[#F2C94C] border-[#F2C94C] text-[#0B2B18] shadow-sm'
+                      : 'bg-[#0B2B18]/90 border-[#F2C94C]/75 text-[#F2C94C] group-hover:border-[#F2C94C]'
+                  }`}
                 >
-                  <FreeLogoEmblem />
-                </button>
-              </div>
-            </MotionConfig>
+                  <Users className="w-4 h-4" aria-hidden="true" />
+                </span>
+                <span
+                  className={`text-[11px] sm:text-xs font-medium leading-tight text-center whitespace-nowrap transition-colors ${
+                    activeMenu === 'info'
+                      ? 'text-[#F2C94C]'
+                      : 'text-amber-100/90 group-hover:text-white'
+                  }`}
+                >
+                  Info Pendaftar
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveMenu((prev) => (prev === 'gallery' ? 'countdown' : 'gallery'))
+                }
+                aria-pressed={activeMenu === 'gallery'}
+                className="group inline-flex flex-col items-center gap-1 min-w-[44px] min-h-[44px] rounded-lg px-1 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+              >
+                <span
+                  className={`w-9 h-9 rounded-full inline-flex items-center justify-center border transition-all duration-200 ease-out group-hover:scale-105 group-active:scale-95 ${
+                    activeMenu === 'gallery'
+                      ? 'bg-[#F2C94C] border-[#F2C94C] text-[#0B2B18] shadow-sm'
+                      : 'bg-[#0B2B18]/90 border-[#F2C94C]/75 text-[#F2C94C] group-hover:border-[#F2C94C]'
+                  }`}
+                >
+                  <Images className="w-4 h-4" aria-hidden="true" />
+                </span>
+                <span
+                  className={`text-[11px] sm:text-xs font-medium leading-tight text-center whitespace-nowrap transition-colors ${
+                    activeMenu === 'gallery'
+                      ? 'text-[#F2C94C]'
+                      : 'text-amber-100/90 group-hover:text-white'
+                  }`}
+                >
+                  Galeri
+                </span>
+              </button>
+            </nav>
 
             {/* Judul: SPMB Tebal di Paling Atas, MI NURUL ISLAM GEDANGMAS di Bawahnya */}
             <div className="text-center">
@@ -316,6 +342,8 @@ export default function App() {
               <p className="mt-1 text-xs sm:text-sm font-medium text-emerald-100/85">
                 {activeMenu === 'info' ? (
                   'Data Pendaftar & Asal TK / RA'
+                ) : activeMenu === 'gallery' ? (
+                  'Galeri Kegiatan Madrasah'
                 ) : remaining.isOpened ? (
                   'Pendaftaran Gelombang 1 Resmi Dibuka'
                 ) : (
@@ -333,13 +361,42 @@ export default function App() {
             <div className="my-3 sm:my-4 border-t border-white/15" aria-hidden="true" />
 
             {activeMenu === 'info' ? (
-              <OriginInfoPanel
-                schools={schools}
-                totalStudents={totalStudents}
-                loading={loadingSchools}
-                loadError={schoolsError}
-                currentUser={currentUser}
-              />
+              <div className="space-y-2.5">
+                <OriginInfoPanel
+                  schools={schools}
+                  totalStudents={totalStudents}
+                  loading={loadingSchools}
+                  loadError={schoolsError}
+                  currentUser={currentUser}
+                />
+                <div className="flex justify-center pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveMenu('countdown')}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-200/90 hover:text-white transition-colors cursor-pointer py-1 px-2"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Kembali ke Hitung Mundur</span>
+                  </button>
+                </div>
+              </div>
+            ) : activeMenu === 'gallery' ? (
+              <div className="space-y-2.5">
+                <GalleryPanel
+                  extraItems={galleryLinks}
+                  currentUser={currentUser}
+                />
+                <div className="flex justify-center pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveMenu('countdown')}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-200/90 hover:text-white transition-colors cursor-pointer py-1 px-2"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Kembali ke Hitung Mundur</span>
+                  </button>
+                </div>
+              </div>
             ) : (
               <>
                 {remaining.isOpened ? (
