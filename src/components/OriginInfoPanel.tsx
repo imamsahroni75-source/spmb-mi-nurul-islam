@@ -1,4 +1,3 @@
-import {type User, signInWithPopup, signOut} from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -14,14 +13,8 @@ import {
 } from 'firebase/firestore';
 import {LogIn, LogOut, Minus, Plus, School, Trash2, Users} from 'lucide-react';
 import {type FormEvent, useEffect, useState} from 'react';
-import {
-  auth,
-  BOOTSTRAPPED_ADMIN_EMAIL,
-  db,
-  googleProvider,
-  handleFirestoreError,
-  OperationType,
-} from '../firebase';
+import {db, handleFirestoreError, OperationType} from '../firebase';
+import {type AdminAuthState} from '../hooks/useAdminAuth';
 
 export type SchoolType = 'TK' | 'RA' | 'Lainnya';
 
@@ -46,7 +39,7 @@ interface OriginInfoPanelProps {
   totalStudents: number;
   loading: boolean;
   loadError: string | null;
-  currentUser: User | null;
+  adminAuth: AdminAuthState;
 }
 
 function buildOriginSchoolId(schoolType: SchoolType, schoolName: string): string {
@@ -75,10 +68,19 @@ export function OriginInfoPanel({
   totalStudents,
   loading,
   loadError,
-  currentUser,
+  adminAuth,
 }: OriginInfoPanelProps) {
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [checkingAdmin, setCheckingAdmin] = useState<boolean>(false);
+  const {
+    currentUser,
+    isAdmin,
+    checkingAdmin,
+    signingIn,
+    authError,
+    signInAdmin,
+    signOutAdmin,
+    clearAuthError,
+  } = adminAuth;
+
   const [adminListTab, setAdminListTab] = useState<'schools' | 'registrants'>('schools');
   const [registrants, setRegistrants] = useState<RegistrantRecord[]>([]);
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
@@ -87,53 +89,14 @@ export function OriginInfoPanel({
   const [schoolType, setSchoolType] = useState<SchoolType>('RA');
   const [studentCountInput, setStudentCountInput] = useState<string>('1');
   const [formError, setFormError] = useState<string | null>(null);
-  const [signingIn, setSigningIn] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function verifyAdminStatus() {
-      if (!currentUser) {
-        setIsAdmin(false);
-        return;
-      }
-
-      setFormError(null);
-
-      if (!currentUser.emailVerified) {
-        setIsAdmin(false);
-        return;
-      }
-
-      if (currentUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
-        setIsAdmin(true);
-        return;
-      }
-
-      setCheckingAdmin(true);
-      try {
-        const adminSnap = await getDoc(doc(db, 'admins', currentUser.uid));
-        if (!cancelled) {
-          setIsAdmin(adminSnap.exists());
-        }
-      } catch {
-        if (!cancelled) {
-          setIsAdmin(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setCheckingAdmin(false);
-        }
-      }
+    if (!isAdmin) {
+      setShowAddForm(false);
     }
-
-    void verifyAdminStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUser]);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -177,32 +140,14 @@ export function OriginInfoPanel({
   }, [isAdmin]);
 
   async function handleAdminSignIn() {
-    if (signingIn) return;
     setFormError(null);
-    setSigningIn(true);
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      if (auth.currentUser) {
-        return;
-      }
-      const message = error instanceof Error ? error.message : '';
-      if (message.includes('popup-closed') || message.includes('cancelled-popup')) {
-        setFormError('Login dibatalkan.');
-      } else if (message.includes('popup-blocked')) {
-        setFormError('Pop-up diblokir browser. Izinkan pop-up untuk login Google.');
-      } else {
-        setFormError('Gagal masuk dengan akun Google.');
-      }
-    } finally {
-      setSigningIn(false);
-    }
+    await signInAdmin();
   }
 
   async function handleAdminSignOut() {
     setFormError(null);
     setShowAddForm(false);
-    await signOut(auth);
+    await signOutAdmin();
   }
 
   async function handleAddRegistrant(event: FormEvent) {
@@ -586,19 +531,13 @@ export function OriginInfoPanel({
 
       {/* Akses Admin Panitia (Google Sign-In) */}
       <div className="flex items-center justify-between gap-2 text-[11px] sm:text-xs text-emerald-100/75 pt-0.5">
-        {currentUser ? (
+        {currentUser && isAdmin ? (
           <>
-            <span className="truncate">
-              {checkingAdmin
-                ? 'Memeriksa akses...'
-                : isAdmin
-                  ? `Admin: ${currentUser.email}`
-                  : `Masuk sebagai ${currentUser.email} (bukan admin)`}
-            </span>
+            <span className="truncate">Admin: {currentUser.email}</span>
             <button
               type="button"
               onClick={() => void handleAdminSignOut()}
-              className="inline-flex items-center gap-1 text-amber-200 hover:text-white transition-colors whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1 text-amber-200 hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Keluar</span>
@@ -606,12 +545,17 @@ export function OriginInfoPanel({
           </>
         ) : (
           <>
-            <span>Data diperbarui oleh panitia SPMB</span>
+            <span>
+              {checkingAdmin ? 'Memeriksa akun...' : 'Data diperbarui oleh panitia SPMB'}
+            </span>
             <button
               type="button"
-              disabled={signingIn}
-              onClick={() => void handleAdminSignIn()}
-              className="inline-flex items-center gap-1 text-amber-200 hover:text-white disabled:opacity-60 transition-colors whitespace-nowrap shrink-0"
+              disabled={signingIn || checkingAdmin}
+              onClick={() => {
+                clearAuthError();
+                void handleAdminSignIn();
+              }}
+              className="inline-flex items-center gap-1 text-amber-200 hover:text-white disabled:opacity-60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <LogIn className="w-3.5 h-3.5" aria-hidden="true" />
               <span>{signingIn ? 'Membuka...' : 'Login Admin'}</span>
@@ -620,8 +564,8 @@ export function OriginInfoPanel({
         )}
       </div>
 
-      {formError && !showAddForm && !currentUser && (
-        <p className="text-xs text-amber-200 text-right">{formError}</p>
+      {(authError || (formError && !showAddForm)) && !(currentUser && isAdmin) && (
+        <p className="text-xs text-amber-200 text-right">{authError || formError}</p>
       )}
     </div>
   );

@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {onAuthStateChanged, type User} from 'firebase/auth';
 import {collection, onSnapshot, orderBy, query, where} from 'firebase/firestore';
 import {ArrowLeft, Images, MessageCircle, Users} from 'lucide-react';
 import {AnimatePresence, motion, MotionConfig} from 'motion/react';
 import {useEffect, useMemo, useState} from 'react';
 import {GalleryPanel, type GalleryLinkRecord} from './components/GalleryPanel';
 import {OriginInfoPanel, type OriginSchoolRecord, type SchoolType} from './components/OriginInfoPanel';
-import {auth, db, handleFirestoreError, OperationType} from './firebase';
+import {db, handleFirestoreError, OperationType} from './firebase';
+import {useAdminAuth} from './hooks/useAdminAuth';
 
 const DEFAULT_TARGET_ISO = '2026-12-08T08:00:00+07:00';
 const BANNER_IMAGE_SRC = `${import.meta.env.BASE_URL}assets/aistudio/Desain_tanpa_judul_20261123_195255_0000_9eb0f220.jpg`;
@@ -106,12 +106,14 @@ export default function App() {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [bannerError, setBannerError] = useState<boolean>(false);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const adminAuth = useAdminAuth();
   const [schools, setSchools] = useState<OriginSchoolRecord[]>([]);
   const [loadingSchools, setLoadingSchools] = useState<boolean>(true);
   const [schoolsError, setSchoolsError] = useState<string | null>(null);
 
   const [galleryLinks, setGalleryLinks] = useState<GalleryLinkRecord[]>([]);
+  const [loadingGallery, setLoadingGallery] = useState<boolean>(true);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -119,13 +121,6 @@ export default function App() {
     }, 1000);
 
     return () => window.clearInterval(intervalId);
-  }, []);
-
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-    return () => unsubscribeAuth();
   }, []);
 
   useEffect(() => {
@@ -186,8 +181,12 @@ export default function App() {
           };
         });
         setGalleryLinks(items);
+        setLoadingGallery(false);
+        setGalleryError(null);
       },
       (error) => {
+        setLoadingGallery(false);
+        setGalleryError('Gagal memuat galeri.');
         handleFirestoreError(error, OperationType.LIST, 'gallery_links');
       },
     );
@@ -367,7 +366,7 @@ export default function App() {
                   totalStudents={totalStudents}
                   loading={loadingSchools}
                   loadError={schoolsError}
-                  currentUser={currentUser}
+                  adminAuth={adminAuth}
                 />
                 <div className="flex justify-center pt-0.5">
                   <button
@@ -383,8 +382,10 @@ export default function App() {
             ) : activeMenu === 'gallery' ? (
               <div className="space-y-2.5">
                 <GalleryPanel
-                  extraItems={galleryLinks}
-                  currentUser={currentUser}
+                  items={galleryLinks}
+                  loading={loadingGallery}
+                  loadError={galleryError}
+                  adminAuth={adminAuth}
                 />
                 <div className="flex justify-center pt-0.5">
                   <button
